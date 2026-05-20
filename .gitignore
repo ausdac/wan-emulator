@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+
+# Captured pcaps and runtime data
+captures/
+profiles/
+*.pcap
+*.pcapng
+
+# Database (runtime state — not source)
+*.db
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

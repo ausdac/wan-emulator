@@ -1,0 +1,49 @@
+# WANEmulator configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# MANAGEMENT INTERFACE PROTECTION
+# List every interface used for management/SSH access here.
+# These are PERMANENTLY excluded from all data-plane operations:
+# impairment, bridge membership, flooding, and capture.
+# ─────────────────────────────────────────────────────────────────────────────
+protected_interfaces:
+  - eno8303          # Management / SSH access — NEVER touch this
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BRIDGE PAIRS (permanent, labeled inline paths)
+#
+# Each entry is a fixed port pair bridged together.
+# iface_a and iface_b must be physical data-plane interfaces —
+# protected_interfaces above are validated and rejected at startup.
+#
+# physical_label: matches the physical silkscreen / port label on the chassis.
+# description:    shown in the UI alongside the label.
+#
+# auto_setup_bridges: true means the app will create and bring up all bridges
+# automatically at service start (i.e., on every boot).
+# ─────────────────────────────────────────────────────────────────────────────
+auto_setup_bridges: true
+
+links:
+  link1:
+    name: "Link 1"
+    physical_label: "Ports 1-2"
+    iface_a: "ens1f0"
+    iface_b: "ens1f1"
+    bridge: "br1"
+    description: "1 GbE inline pair (SFP)"
+  link2:
+    name: "Link 2"
+    physical_label: "Ports 3-4"
+    iface_a: "ens2f0"
+    iface_b: "ens2f1"
+    bridge: "br2"
+    description: "1 GbE inline pair (SFP) — second NIC"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STORAGE
+# ─────────────────────────────────────────────────────────────────────────────
+captures_dir: "/var/lib/wanemulator/captures"
+profiles_db:  "/var/lib/wanemulator/profiles.db"
+
+# Set to true to print tc/ip commands instead of executing them (safe testing)
+dry_run: false

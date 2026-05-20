@@ -1,0 +1,21 @@
+[Unit]
+Description=WANEmulator – Linux tc/netem WAN impairment controller
+After=network.target
+Documentation=https://github.com/yourorg/wanemulator
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wanemulator/backend
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8080 --workers 1 --no-access-log
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wanemulator
+Environment=WANEMULATOR_CONFIG=/opt/wanemulator/config.yaml
+# Allow unlimited open files for high-rate capture
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
