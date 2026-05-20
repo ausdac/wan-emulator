@@ -93,40 +93,56 @@ function Toggle({ value, onChange, label, activeLabel }) {
 // ── Label textarea ────────────────────────────────────────────────────────────
 function LinkLabel({ linkId, initialValue }) {
   const [text, setText] = useState(initialValue ?? '')
-  const [saved, setSaved] = useState(true)
-  const timer = useRef(null)
+  const [status, setStatus] = useState(null) // null | 'saving' | 'saved' | 'error'
+  const savedRef = useRef(initialValue ?? '')
 
-  useEffect(() => { setText(initialValue ?? '') }, [initialValue])
+  useEffect(() => { setText(initialValue ?? ''); savedRef.current = initialValue ?? '' }, [initialValue])
 
-  const handleChange = (v) => {
-    setText(v)
-    setSaved(false)
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      api.setLabel(linkId, v).then(() => setSaved(true)).catch(() => {})
-    }, 1200)
+  const save = (v) => {
+    if (v === savedRef.current) return
+    setStatus('saving')
+    api.setLabel(linkId, v)
+      .then(() => { savedRef.current = v; setStatus('saved') })
+      .catch(() => setStatus('error'))
   }
+
+  const isDirty = text !== savedRef.current
 
   return (
     <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
           Notes / Label
         </span>
-        {!saved && <span style={{ fontSize: 10, color: '#475569' }}>saving…</span>}
-        {saved && text && <span style={{ fontSize: 10, color: '#22c55e' }}>✓ saved</span>}
+        <div style={{ flex: 1 }} />
+        {status === 'saving' && <span style={{ fontSize: 11, color: '#475569' }}>Saving…</span>}
+        {status === 'saved'  && <span style={{ fontSize: 11, color: '#22c55e' }}>✓ Saved</span>}
+        {status === 'error'  && <span style={{ fontSize: 11, color: '#ef4444' }}>Save failed</span>}
+        <button
+          onClick={() => save(text)}
+          disabled={!isDirty}
+          style={{
+            fontSize: 11, padding: '2px 10px', borderRadius: 4, cursor: isDirty ? 'pointer' : 'default',
+            background: isDirty ? 'var(--accent)' : '#1e2235',
+            color: isDirty ? '#fff' : '#475569',
+            border: 'none', transition: 'background .15s',
+          }}
+        >
+          Save
+        </button>
       </div>
       <textarea
         value={text}
-        onChange={e => handleChange(e.target.value)}
+        onChange={e => { setText(e.target.value); setStatus(null) }}
+        onBlur={e => save(e.target.value)}
         placeholder="e.g. Dachel, A: PBS CSNAM-12345 — WAN sim for QA rack"
         rows={2}
         style={{
           width: '100%', boxSizing: 'border-box',
           background: '#0d1120', color: '#e2e8f0',
-          border: '1px solid var(--border)', borderRadius: 6,
-          padding: '6px 10px', fontSize: 13, fontFamily: 'inherit',
-          resize: 'vertical', outline: 'none',
+          border: `1px solid ${isDirty ? '#3b4a6b' : 'var(--border)'}`,
+          borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit',
+          resize: 'vertical', outline: 'none', transition: 'border-color .15s',
         }}
       />
     </div>
@@ -300,6 +316,11 @@ export default function LinkCard({ link, onStatusChange }) {
       {/* ── Label / notes ── */}
       <LinkLabel linkId={link.id} initialValue={link.label} />
 
+      {/* ── Live stats panel ── */}
+      {showStats && (
+        <StatsPanel linkId={link.id} ifaceA={link.iface_a} ifaceB={link.iface_b} />
+      )}
+
       {/* ── Preset selector ── */}
       <PresetSelector
         linkId={link.id}
@@ -322,13 +343,27 @@ export default function LinkCard({ link, onStatusChange }) {
 
       {/* ── Impairment table ── */}
       <div style={{ padding: '16px 18px' }}>
-        <div style={{ marginBottom: 14 }}>
+
+        {/* ── Apply / Clear row — top of section ── */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
           <Toggle
             value={enabled}
             onChange={setEnabled}
             label="Impairment disabled"
             activeLabel="Impairment ENABLED"
           />
+          <div style={{ flex: 1 }} />
+          <button
+            className="btn btn-primary"
+            onClick={handleApply}
+            disabled={busy || hasJitterError}
+            title={hasJitterError ? 'Set a delay value before using jitter' : undefined}
+          >
+            ▶ Apply Impairment
+          </button>
+          <button className="btn btn-neutral" onClick={handleClear} disabled={busy}>
+            Clear
+          </button>
         </div>
 
         {hasJitterError && (
@@ -444,27 +479,7 @@ export default function LinkCard({ link, onStatusChange }) {
           </div>
         </div>
 
-        {/* ── Action row ── */}
-        <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            className="btn btn-primary"
-            onClick={handleApply}
-            disabled={busy || hasJitterError}
-            title={hasJitterError ? 'Set a delay value before using jitter' : undefined}
-          >
-            ▶ Apply Impairment
-          </button>
-          <button className="btn btn-neutral" onClick={handleClear} disabled={busy}>
-            Clear
-          </button>
-          <div style={{ flex: 1 }} />
-        </div>
       </div>
-
-      {/* ── Live stats panel ── */}
-      {showStats && (
-        <StatsPanel linkId={link.id} ifaceA={link.iface_a} ifaceB={link.iface_b} />
-      )}
     </div>
   )
 }

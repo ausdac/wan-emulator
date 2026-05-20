@@ -30,14 +30,14 @@ links:
     iface_a: "ens1f0"
     iface_b: "ens1f1"
     bridge: "br1"
-    description: "1 GbE inline pair (SFP)"
+    description: "1 GbE inline pair (RJ45)"
   link2:
     name: "Link 2"
     physical_label: "Ports 3-4"
     iface_a: "ens2f0"
     iface_b: "ens2f1"
     bridge: "br2"
-    description: "1 GbE inline pair (SFP) — second NIC"
+    description: "1 GbE inline pair (RJ45)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STORAGE
