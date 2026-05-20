@@ -1,4 +1,4 @@
-# WANEmulator
+# WAN-Emulator
 
 A Linux-based WAN impairment emulator built to replace hardware appliances like the PacketStorm 400E. Runs on any Linux server with multiple NICs and provides a web UI for controlling per-direction traffic shaping on fixed inline bridge pairs.
 
@@ -10,7 +10,7 @@ A Linux-based WAN impairment emulator built to replace hardware appliances like 
 
 ## What it does
 
-WANEmulator sits inline between two network segments. Traffic passes through Linux bridges; `tc/netem` applies impairments to each direction independently. The web UI lets you dial in realistic WAN conditions without touching the command line.
+WAN-Emulator sits inline between two network segments. Traffic passes through Linux bridges; `tc/netem` applies impairments to each direction independently. The web UI lets you dial in realistic WAN conditions without touching the command line.
 
 **Impairments supported:**
 - Delay & jitter (with optional correlation)
