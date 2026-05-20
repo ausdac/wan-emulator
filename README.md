@@ -20,6 +20,7 @@ WANEmulator sits inline between two network segments. Traffic passes through Lin
 - All of the above with optional per-flow traffic filters (IP, port, protocol, DSCP, VLAN, MPLS)
 
 **Built-in presets:** 3G, 4G/LTE, 5G, Satellite (GEO & LEO), DSL, Cable, Fiber, Lossy Wi-Fi, Congested WAN, QoS Stress
+<img width="638" height="842" alt="Screenshot 2026-05-20 at 10 26 58 AM" src="https://github.com/user-attachments/assets/359edb1a-6bcf-4d3f-96d0-61c9e20ce7ec" />
 
 ---
 
