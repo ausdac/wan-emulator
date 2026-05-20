@@ -1,6 +1,6 @@
 # WAN-Emulator
 
-A Linux-based WAN impairment emulator built to replace hardware appliances like the PacketStorm 400E. Runs on any Linux server with multiple NICs and provides a web UI for controlling per-direction traffic shaping on fixed inline bridge pairs.
+A Linux-based WAN impairment emulator built to replace hardware appliances. Runs on any Linux server with multiple NICs and provides a web UI for controlling per-direction traffic shaping on fixed inline bridge pairs.
 
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
