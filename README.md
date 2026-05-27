@@ -21,8 +21,15 @@ WAN-Emulator sits inline between two network segments. Traffic passes through Li
 
 **Built-in presets:** 3G, 4G/LTE, 5G, Satellite (GEO & LEO), DSL, Cable, Fiber, Lossy Wi-Fi, Congested WAN, QoS Stress
 
-<img width="638" height="842" alt="Screenshot 2026-05-20 at 10 26 58 AM" src="https://github.com/user-attachments/assets/359edb1a-6bcf-4d3f-96d0-61c9e20ce7ec" />
-
+##User Interface
+- Front page
+<img width="1868" height="465" alt="Screenshot 2026-05-27 at 12 36 42 PM" src="https://github.com/user-attachments/assets/e1173aa7-7ae9-4b67-a698-4381d965a900" />
+- Setting impairments
+<img width="684" height="861" alt="Screenshot 2026-05-27 at 12 37 32 PM" src="https://github.com/user-attachments/assets/3c4d126d-2ac9-4d2f-bc01-667bf60594f6" />
+- Stats tab
+<img width="699" height="559" alt="Screenshot 2026-05-27 at 12 38 00 PM" src="https://github.com/user-attachments/assets/9a49b38c-6b69-4791-9ca5-d85d7b8270fa" />
+- Filters
+<img width="689" height="374" alt="Screenshot 2026-05-27 at 12 38 21 PM" src="https://github.com/user-attachments/assets/7ec91b64-9220-4be2-94d2-4b8e8e05c5a9" />
 ---
 
 ## Architecture
