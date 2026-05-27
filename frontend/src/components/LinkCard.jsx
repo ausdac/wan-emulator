@@ -159,6 +159,78 @@ export default function LinkCard({ link, onStatusChange }) {
   const [msg,        setMsg]       = useState(null)
   const [showStats,  setShowStats] = useState(false)
 
+  // ── Duty-cycle state ────────────────────────────────────────────────────────
+  const [cycleEnabled,   setCycleEnabled]   = useState(false)
+  const [cycleOnSecs,    setCycleOnSecs]    = useState(10)
+  const [cycleOffSecs,   setCycleOffSecs]   = useState(20)
+  const [cyclePhase,     setCyclePhase]     = useState(null)   // 'on' | 'off' | null
+  const [cycleCountdown, setCycleCountdown] = useState(0)
+
+  // Refs so the recursive timer always reads the latest values, never stale closures
+  const cycleTimerRef  = useRef(null)   // setTimeout handle
+  const cycleTickRef   = useRef(null)   // setInterval countdown handle
+  const cycleRunRef    = useRef(false)  // whether cycle is active
+  const cycleDurRef    = useRef({ onSecs: cycleOnSecs, offSecs: cycleOffSecs })
+  const impairRef      = useRef({ aToB, bToA })
+  const doPhaseRef     = useRef(null)   // self-referencing fn stored in ref
+
+  // Keep duration + impairment refs current on every render
+  useEffect(() => { cycleDurRef.current = { onSecs: cycleOnSecs, offSecs: cycleOffSecs } },
+    [cycleOnSecs, cycleOffSecs])
+  useEffect(() => { impairRef.current = { aToB, bToA } }, [aToB, bToA])
+
+  // The cycle function — stored in a ref so recursive setTimeout always calls latest version
+  doPhaseRef.current = (phase) => {
+    if (!cycleRunRef.current) return
+    const { onSecs, offSecs } = cycleDurRef.current
+    const duration = phase === 'on' ? onSecs : offSecs
+
+    if (phase === 'on') {
+      const { aToB: a, bToA: b } = impairRef.current
+      api.setImpairment(link.id, { enabled: true, a_to_b: a, b_to_a: b }).catch(() => {})
+    } else {
+      const blank = emptyDir()
+      api.setImpairment(link.id, { enabled: false, a_to_b: blank, b_to_a: blank }).catch(() => {})
+    }
+
+    setCyclePhase(phase)
+    setCycleCountdown(duration)
+
+    // Per-second countdown tick
+    clearInterval(cycleTickRef.current)
+    let rem = duration
+    cycleTickRef.current = setInterval(() => {
+      rem -= 1
+      setCycleCountdown(rem)
+      if (rem <= 0) clearInterval(cycleTickRef.current)
+    }, 1000)
+
+    // Schedule next phase
+    cycleTimerRef.current = setTimeout(
+      () => doPhaseRef.current(phase === 'on' ? 'off' : 'on'),
+      duration * 1000,
+    )
+  }
+
+  const stopCycle = useCallback(() => {
+    cycleRunRef.current = false
+    clearTimeout(cycleTimerRef.current)
+    clearInterval(cycleTickRef.current)
+    setCyclePhase(null)
+    setCycleCountdown(0)
+  }, [])
+
+  // Start / stop when checkbox changes
+  useEffect(() => {
+    if (cycleEnabled) {
+      cycleRunRef.current = true
+      doPhaseRef.current('on')
+    } else {
+      stopCycle()
+    }
+    return () => stopCycle()          // cleanup on unmount too
+  }, [cycleEnabled, stopCycle])       // intentionally excludes onSecs/offSecs — changes take effect next phase
+
   const flash = (text, ok = true) => {
     setMsg({ text, ok })
     setTimeout(() => setMsg(null), 5000)
@@ -180,11 +252,15 @@ export default function LinkCard({ link, onStatusChange }) {
   const handleSetup   = () => act(() => api.setupLink(link.id))
   const handleReset   = () => {
     if (!window.confirm(`Clear all impairments on ${link.name}? The bridge stays up — inline traffic is unaffected.`)) return
+    stopCycle(); setCycleEnabled(false)
     act(() => api.resetLink(link.id))
   }
-  const handleApply   = () =>
+  const handleApply   = () => {
+    stopCycle(); setCycleEnabled(false)
     act(() => api.setImpairment(link.id, { enabled, a_to_b: aToB, b_to_a: bToA }))
+  }
   const handleClear   = () => {
+    stopCycle(); setCycleEnabled(false)
     const blank = emptyDir()
     setAToB(blank); setBToA({ ...blank }); setEnabled(false)
     act(() => api.setImpairment(link.id, { enabled: false, a_to_b: blank, b_to_a: blank }))
@@ -364,6 +440,71 @@ export default function LinkCard({ link, onStatusChange }) {
           <button className="btn btn-neutral" onClick={handleClear} disabled={busy}>
             Clear
           </button>
+        </div>
+
+        {/* ── Duty-cycle row ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '8px 12px', marginBottom: 12,
+          background: cycleEnabled ? '#0a1628' : '#0d1120',
+          border: `1px solid ${cycleEnabled ? '#1e3a5f' : '#1e2235'}`,
+          borderRadius: 7,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={cycleEnabled}
+              onChange={e => setCycleEnabled(e.target.checked)}
+              disabled={hasJitterError}
+              style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 13, fontWeight: 600, color: cycleEnabled ? '#7dd3fc' : 'var(--muted)' }}>
+              Cycle Impairment
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>On</span>
+            <input
+              type="number" min={1} max={3600} step={1}
+              value={cycleOnSecs}
+              onChange={e => setCycleOnSecs(Math.max(1, parseInt(e.target.value) || 1))}
+              style={{ width: 60, textAlign: 'right' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>s</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Off</span>
+            <input
+              type="number" min={1} max={3600} step={1}
+              value={cycleOffSecs}
+              onChange={e => setCycleOffSecs(Math.max(1, parseInt(e.target.value) || 1))}
+              style={{ width: 60, textAlign: 'right' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>s</span>
+          </div>
+
+          {/* Live status indicator */}
+          {cyclePhase && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                background: cyclePhase === 'on' ? '#f59e0b' : '#334155',
+                boxShadow: cyclePhase === 'on' ? '0 0 6px #f59e0b' : 'none',
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 600,
+                color: cyclePhase === 'on' ? '#fbbf24' : '#64748b' }}>
+                {cyclePhase === 'on' ? 'IMPAIRED' : 'CLEAR'} — {cycleCountdown}s
+              </span>
+            </div>
+          )}
+
+          {!cycleEnabled && (
+            <span style={{ fontSize: 11, color: '#334155', marginLeft: 2 }}>
+              Cycles endlessly once enabled — manual Apply/Clear stops the cycle
+            </span>
+          )}
         </div>
 
         {hasJitterError && (
