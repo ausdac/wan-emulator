@@ -159,77 +159,31 @@ export default function LinkCard({ link, onStatusChange }) {
   const [msg,        setMsg]       = useState(null)
   const [showStats,  setShowStats] = useState(false)
 
-  // ── Duty-cycle state ────────────────────────────────────────────────────────
-  const [cycleEnabled,   setCycleEnabled]   = useState(false)
-  const [cycleOnSecs,    setCycleOnSecs]    = useState(10)
-  const [cycleOffSecs,   setCycleOffSecs]   = useState(20)
-  const [cyclePhase,     setCyclePhase]     = useState(null)   // 'on' | 'off' | null
-  const [cycleCountdown, setCycleCountdown] = useState(0)
+  // ── Duty-cycle state (server-owned) ────────────────────────────────────────
+  const serverCycle = link.cycle ?? {}
+  const [cycleEnabled,   setCycleEnabled]   = useState(serverCycle.running ?? false)
+  const [cycleOnSecs,    setCycleOnSecs]    = useState(serverCycle.on_secs  || 10)
+  const [cycleOffSecs,   setCycleOffSecs]   = useState(serverCycle.off_secs || 20)
+  const [cyclePhase,     setCyclePhase]     = useState(serverCycle.phase    ?? null)
+  const [cycleCountdown, setCycleCountdown] = useState(serverCycle.countdown ?? 0)
 
-  // Refs so the recursive timer always reads the latest values, never stale closures
-  const cycleTimerRef  = useRef(null)   // setTimeout handle
-  const cycleTickRef   = useRef(null)   // setInterval countdown handle
-  const cycleRunRef    = useRef(false)  // whether cycle is active
-  const cycleDurRef    = useRef({ onSecs: cycleOnSecs, offSecs: cycleOffSecs })
-  const impairRef      = useRef({ aToB, bToA })
-  const doPhaseRef     = useRef(null)   // self-referencing fn stored in ref
-
-  // Keep duration + impairment refs current on every render
-  useEffect(() => { cycleDurRef.current = { onSecs: cycleOnSecs, offSecs: cycleOffSecs } },
-    [cycleOnSecs, cycleOffSecs])
-  useEffect(() => { impairRef.current = { aToB, bToA } }, [aToB, bToA])
-
-  // The cycle function — stored in a ref so recursive setTimeout always calls latest version
-  doPhaseRef.current = (phase) => {
-    if (!cycleRunRef.current) return
-    const { onSecs, offSecs } = cycleDurRef.current
-    const duration = phase === 'on' ? onSecs : offSecs
-
-    if (phase === 'on') {
-      const { aToB: a, bToA: b } = impairRef.current
-      api.setImpairment(link.id, { enabled: true, a_to_b: a, b_to_a: b }).catch(() => {})
-    } else {
-      const blank = emptyDir()
-      api.setImpairment(link.id, { enabled: false, a_to_b: blank, b_to_a: blank }).catch(() => {})
-    }
-
-    setCyclePhase(phase)
-    setCycleCountdown(duration)
-
-    // Per-second countdown tick
-    clearInterval(cycleTickRef.current)
-    let rem = duration
-    cycleTickRef.current = setInterval(() => {
-      rem -= 1
-      setCycleCountdown(rem)
-      if (rem <= 0) clearInterval(cycleTickRef.current)
-    }, 1000)
-
-    // Schedule next phase
-    cycleTimerRef.current = setTimeout(
-      () => doPhaseRef.current(phase === 'on' ? 'off' : 'on'),
-      duration * 1000,
-    )
-  }
-
-  const stopCycle = useCallback(() => {
-    cycleRunRef.current = false
-    clearTimeout(cycleTimerRef.current)
-    clearInterval(cycleTickRef.current)
-    setCyclePhase(null)
-    setCycleCountdown(0)
-  }, [])
-
-  // Start / stop when checkbox changes
+  // Poll cycle status from server every 2s while running
   useEffect(() => {
-    if (cycleEnabled) {
-      cycleRunRef.current = true
-      doPhaseRef.current('on')
-    } else {
-      stopCycle()
-    }
-    return () => stopCycle()          // cleanup on unmount too
-  }, [cycleEnabled, stopCycle])       // intentionally excludes onSecs/offSecs — changes take effect next phase
+    if (!cycleEnabled) return
+    const id = setInterval(() => {
+      api.getCycle(link.id).then(s => {
+        if (!s.running) {
+          setCycleEnabled(false)
+          setCyclePhase(null)
+          setCycleCountdown(0)
+        } else {
+          setCyclePhase(s.phase)
+          setCycleCountdown(Math.round(s.countdown))
+        }
+      }).catch(() => {})
+    }, 2000)
+    return () => clearInterval(id)
+  }, [cycleEnabled, link.id])
 
   const flash = (text, ok = true) => {
     setMsg({ text, ok })
@@ -252,15 +206,15 @@ export default function LinkCard({ link, onStatusChange }) {
   const handleSetup   = () => act(() => api.setupLink(link.id))
   const handleReset   = () => {
     if (!window.confirm(`Clear all impairments on ${link.name}? The bridge stays up — inline traffic is unaffected.`)) return
-    stopCycle(); setCycleEnabled(false)
+    setCycleEnabled(false); setCyclePhase(null); setCycleCountdown(0)
     act(() => api.resetLink(link.id))
   }
   const handleApply   = () => {
-    stopCycle(); setCycleEnabled(false)
+    setCycleEnabled(false); setCyclePhase(null); setCycleCountdown(0)
     act(() => api.setImpairment(link.id, { enabled, a_to_b: aToB, b_to_a: bToA }))
   }
   const handleClear   = () => {
-    stopCycle(); setCycleEnabled(false)
+    setCycleEnabled(false); setCyclePhase(null); setCycleCountdown(0)
     const blank = emptyDir()
     setAToB(blank); setBToA({ ...blank }); setEnabled(false)
     act(() => api.setImpairment(link.id, { enabled: false, a_to_b: blank, b_to_a: blank }))
@@ -454,8 +408,18 @@ export default function LinkCard({ link, onStatusChange }) {
             <input
               type="checkbox"
               checked={cycleEnabled}
-              onChange={e => setCycleEnabled(e.target.checked)}
-              disabled={hasJitterError}
+              onChange={e => {
+                const want = e.target.checked
+                if (want && !enabled) { flash('Apply impairment settings first before starting a cycle', false); return }
+                const body = { enabled: want, on_secs: cycleOnSecs, off_secs: cycleOffSecs }
+                api.setCycle(link.id, body)
+                  .then(() => {
+                    setCycleEnabled(want)
+                    if (!want) { setCyclePhase(null); setCycleCountdown(0) }
+                  })
+                  .catch(err => flash(err.message, false))
+              }}
+              disabled={hasJitterError || busy}
               style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
             />
             <span style={{ fontSize: 13, fontWeight: 600, color: cycleEnabled ? '#7dd3fc' : 'var(--muted)' }}>

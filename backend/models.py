@@ -114,6 +114,20 @@ class PresetInfo(BaseModel):
     category: str
 
 
+class CycleRequest(BaseModel):
+    enabled: bool
+    on_secs: float = Field(default=10.0, gt=0, le=86400)
+    off_secs: float = Field(default=10.0, gt=0, le=86400)
+
+
+class CycleStatus(BaseModel):
+    running: bool = False
+    phase: Optional[Literal["on", "off"]] = None
+    countdown: float = 0.0
+    on_secs: float = 0.0
+    off_secs: float = 0.0
+
+
 class LinkStatus(BaseModel):
     id: str
     name: str
@@ -126,6 +140,7 @@ class LinkStatus(BaseModel):
     bridge_up: bool
     impairment_enabled: bool
     current_settings: Optional[LinkImpairmentRequest]
+    cycle: CycleStatus = Field(default_factory=CycleStatus)
 
 
 

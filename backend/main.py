@@ -9,11 +9,13 @@ Key behaviours added in this revision:
   - Reset no longer tears down bridges — it only clears tc qdiscs so the
     inline path stays live while impairments are removed.
 """
+import asyncio
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import re
 import subprocess
 
@@ -30,6 +32,8 @@ import tc_manager
 from config import config
 from models import (
     CommandResult,
+    CycleRequest,
+    CycleStatus,
     DirectionImpairment,
     IfaceStats,
     LinkImpairmentRequest,
@@ -51,6 +55,12 @@ logger = logging.getLogger("wanemulator")
 
 # ── In-memory link state ─────────────────────────────────────────────────────
 _link_settings: Dict[str, LinkImpairmentRequest] = {}
+
+# ── Cycle state ───────────────────────────────────────────────────────────────
+_cycle_config: Dict[str, Tuple[float, float]] = {}   # link_id -> (on_secs, off_secs)
+_cycle_phase:  Dict[str, str]                 = {}   # link_id -> "on" | "off"
+_cycle_start:  Dict[str, float]               = {}   # link_id -> phase start time (monotonic)
+_cycle_tasks:  Dict[str, asyncio.Task]        = {}   # link_id -> running Task
 
 
 # ── App lifecycle ─────────────────────────────────────────────────────────────
@@ -83,6 +93,10 @@ async def lifespan(app: FastAPI):
     yield  # ── server running ──
 
     logger.info("WANEmulator shutting down")
+    for task in list(_cycle_tasks.values()):
+        task.cancel()
+    if _cycle_tasks:
+        await asyncio.gather(*_cycle_tasks.values(), return_exceptions=True)
 
 
 app = FastAPI(
@@ -98,6 +112,66 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Cycle helpers ─────────────────────────────────────────────────────────────
+
+async def _cycle_loop(link_id: str) -> None:
+    """Asyncio background task: alternates impairment on/off forever."""
+    lc = config.links[link_id]
+    logger.info("Cycle started for %s", link_id)
+    try:
+        while True:
+            on_secs, off_secs = _cycle_config[link_id]
+
+            # ON phase — apply saved impairment settings
+            _cycle_phase[link_id] = "on"
+            _cycle_start[link_id] = time.monotonic()
+            settings = _link_settings[link_id]
+            tc_manager.apply_direction(lc.iface_b, settings.a_to_b, dry_run=config.dry_run)
+            tc_manager.apply_direction(lc.iface_a, settings.b_to_a, dry_run=config.dry_run)
+            await asyncio.sleep(on_secs)
+
+            # OFF phase — clear qdiscs
+            _cycle_phase[link_id] = "off"
+            _cycle_start[link_id] = time.monotonic()
+            tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
+            tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+            await asyncio.sleep(off_secs)
+
+    except asyncio.CancelledError:
+        # Clean up on stop: clear any active impairments
+        tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
+        tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+        logger.info("Cycle stopped for %s", link_id)
+        raise
+
+
+def _stop_cycle(link_id: str) -> None:
+    task = _cycle_tasks.pop(link_id, None)
+    if task:
+        task.cancel()
+    _cycle_config.pop(link_id, None)
+    _cycle_phase.pop(link_id, None)
+    _cycle_start.pop(link_id, None)
+
+
+def _get_cycle_status(link_id: str) -> CycleStatus:
+    if link_id not in _cycle_tasks or _cycle_tasks[link_id].done():
+        return CycleStatus()
+    on_secs, off_secs = _cycle_config.get(link_id, (0.0, 0.0))
+    phase = _cycle_phase.get(link_id)
+    start = _cycle_start.get(link_id, time.monotonic())
+    duration = on_secs if phase == "on" else off_secs
+    elapsed = time.monotonic() - start
+    countdown = max(0.0, duration - elapsed)
+    return CycleStatus(
+        running=True,
+        phase=phase,
+        countdown=round(countdown, 1),
+        on_secs=on_secs,
+        off_secs=off_secs,
+    )
 
 
 # ── Guards ─────────────────────────────────────────────────────────────────
@@ -198,6 +272,7 @@ async def list_links():
             bridge_up=bridge_manager.is_bridge_up(lc.bridge),
             impairment_enabled=settings.enabled if settings else False,
             current_settings=settings,
+            cycle=_get_cycle_status(link_id),
         ))
     return result
 
@@ -224,6 +299,7 @@ async def set_impairment(link_id: str, body: LinkImpairmentRequest):
     lc = _get_link(link_id)
     _assert_not_protected(lc.iface_a)
     _assert_not_protected(lc.iface_b)
+    _stop_cycle(link_id)
     _link_settings[link_id] = body
 
     all_cmds: List[str] = []
@@ -263,6 +339,7 @@ async def reset_link(link_id: str):
     lc = _get_link(link_id)
     all_cmds: List[str] = []
 
+    _stop_cycle(link_id)
     all_cmds += tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
     all_cmds += tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
 
@@ -275,6 +352,33 @@ async def reset_link(link_id: str):
         message="Impairments cleared — bridge remains up",
         commands=all_cmds, errors=[],
     )
+
+
+@app.post("/links/{link_id}/cycle")
+async def set_cycle(link_id: str, body: CycleRequest):
+    """Start or stop the server-side duty-cycle loop for a link."""
+    lc = _get_link(link_id)
+    _assert_not_protected(lc.iface_a)
+    _assert_not_protected(lc.iface_b)
+
+    _stop_cycle(link_id)
+
+    if not body.enabled:
+        return {"running": False, "message": "Cycle stopped"}
+
+    if not _link_settings[link_id].enabled:
+        raise HTTPException(400, "Apply impairment settings before starting a cycle")
+
+    _cycle_config[link_id] = (body.on_secs, body.off_secs)
+    task = asyncio.create_task(_cycle_loop(link_id))
+    _cycle_tasks[link_id] = task
+    return {"running": True, "message": "Cycle started", "on_secs": body.on_secs, "off_secs": body.off_secs}
+
+
+@app.get("/links/{link_id}/cycle")
+async def get_cycle(link_id: str):
+    _get_link(link_id)
+    return _get_cycle_status(link_id)
 
 
 @app.put("/links/{link_id}/label")

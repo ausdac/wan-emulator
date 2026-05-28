@@ -42,4 +42,11 @@ export const api = {
 
   // Labels (V1.1)
   setLabel:      (id, label)  => req('PUT',    `/links/${id}/label`, { label }),
+
+  // Stats clear
+  clearStats:    (id)         => req('POST',   `/links/${id}/stats/clear`),
+
+  // Duty cycle (V2 server-side)
+  setCycle:      (id, body)   => req('POST',   `/links/${id}/cycle`, body),
+  getCycle:      (id)         => req('GET',    `/links/${id}/cycle`),
 }
