@@ -36,6 +36,20 @@ def init_db(db_path: str) -> None:
                 updated_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS link_impairments (
+                link_id    TEXT PRIMARY KEY,
+                settings   TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS link_cycles (
+                link_id  TEXT PRIMARY KEY,
+                on_secs  REAL NOT NULL,
+                off_secs REAL NOT NULL
+            )
+        """)
     logger.info("Database ready: %s", db_path)
 
 
@@ -103,6 +117,53 @@ def delete_profile(name: str) -> bool:
     if deleted:
         logger.info("Profile deleted: %s", name)
     return deleted
+
+
+def save_impairment(link_id: str, settings: dict) -> None:
+    now = _now()
+    with _connect() as conn:
+        conn.execute("""
+            INSERT INTO link_impairments (link_id, settings, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(link_id) DO UPDATE SET
+                settings   = excluded.settings,
+                updated_at = excluded.updated_at
+        """, (link_id, json.dumps(settings), now))
+
+
+def get_impairment(link_id: str) -> Optional[dict]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT settings FROM link_impairments WHERE link_id = ?", (link_id,)
+        ).fetchone()
+    return json.loads(row["settings"]) if row else None
+
+
+def delete_impairment(link_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM link_impairments WHERE link_id = ?", (link_id,))
+
+
+def save_cycle(link_id: str, on_secs: float, off_secs: float) -> None:
+    with _connect() as conn:
+        conn.execute("""
+            INSERT INTO link_cycles (link_id, on_secs, off_secs)
+            VALUES (?, ?, ?)
+            ON CONFLICT(link_id) DO UPDATE SET
+                on_secs  = excluded.on_secs,
+                off_secs = excluded.off_secs
+        """, (link_id, on_secs, off_secs))
+
+
+def get_all_cycles() -> List[dict]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT link_id, on_secs, off_secs FROM link_cycles").fetchall()
+    return [{"link_id": r["link_id"], "on_secs": r["on_secs"], "off_secs": r["off_secs"]} for r in rows]
+
+
+def delete_cycle(link_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM link_cycles WHERE link_id = ?", (link_id,))
 
 
 def get_label(link_id: str) -> str:

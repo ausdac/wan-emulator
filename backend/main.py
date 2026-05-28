@@ -74,8 +74,18 @@ async def lifespan(app: FastAPI):
 
     database.init_db(config.profiles_db)
 
+    # Restore persisted impairment settings
     for link_id in config.links:
-        _link_settings[link_id] = LinkImpairmentRequest()
+        saved = database.get_impairment(link_id)
+        if saved:
+            try:
+                _link_settings[link_id] = LinkImpairmentRequest.model_validate(saved)
+                logger.info("Restored impairment settings for %s", link_id)
+            except Exception as exc:
+                logger.warning("Could not restore impairment for %s: %s", link_id, exc)
+                _link_settings[link_id] = LinkImpairmentRequest()
+        else:
+            _link_settings[link_id] = LinkImpairmentRequest()
 
     # Auto-setup bridges if configured — this runs on every service start
     # (i.e., on every boot), making bridges boot-persistent.
@@ -89,6 +99,29 @@ async def lifespan(app: FastAPI):
                 logger.info("Bridge %s ready (%s ↔ %s)", lc.bridge, lc.iface_a, lc.iface_b)
             else:
                 logger.warning("Bridge %s setup issues: %s", lc.bridge, errs)
+
+    # Re-apply saved impairments
+    for link_id, lc in config.links.items():
+        req = _link_settings[link_id]
+        if req.enabled:
+            tc_manager.apply_direction(lc.iface_b, req.a_to_b, dry_run=config.dry_run)
+            tc_manager.apply_direction(lc.iface_a, req.b_to_a, dry_run=config.dry_run)
+            logger.info("Re-applied impairments for %s", link_id)
+
+    # Restore and restart saved cycles
+    for row in database.get_all_cycles():
+        link_id = row["link_id"]
+        if link_id not in config.links:
+            database.delete_cycle(link_id)
+            continue
+        if not _link_settings[link_id].enabled:
+            logger.warning("Skipping cycle restore for %s — impairment not enabled", link_id)
+            database.delete_cycle(link_id)
+            continue
+        _cycle_config[link_id] = (row["on_secs"], row["off_secs"])
+        task = asyncio.create_task(_cycle_loop(link_id))
+        _cycle_tasks[link_id] = task
+        logger.info("Restored cycle for %s (on=%.1fs off=%.1fs)", link_id, row["on_secs"], row["off_secs"])
 
     yield  # ── server running ──
 
@@ -128,21 +161,30 @@ async def _cycle_loop(link_id: str) -> None:
             _cycle_phase[link_id] = "on"
             _cycle_start[link_id] = time.monotonic()
             settings = _link_settings[link_id]
-            tc_manager.apply_direction(lc.iface_b, settings.a_to_b, dry_run=config.dry_run)
-            tc_manager.apply_direction(lc.iface_a, settings.b_to_a, dry_run=config.dry_run)
+            try:
+                tc_manager.apply_direction(lc.iface_b, settings.a_to_b, dry_run=config.dry_run)
+                tc_manager.apply_direction(lc.iface_a, settings.b_to_a, dry_run=config.dry_run)
+            except Exception as exc:
+                logger.error("Cycle ON phase error for %s: %s", link_id, exc)
             await asyncio.sleep(on_secs)
 
             # OFF phase — clear qdiscs
             _cycle_phase[link_id] = "off"
             _cycle_start[link_id] = time.monotonic()
-            tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
-            tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+            try:
+                tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
+                tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+            except Exception as exc:
+                logger.error("Cycle OFF phase error for %s: %s", link_id, exc)
             await asyncio.sleep(off_secs)
 
     except asyncio.CancelledError:
         # Clean up on stop: clear any active impairments
-        tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
-        tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+        try:
+            tc_manager.clear_qdisc(lc.iface_a, dry_run=config.dry_run)
+            tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
+        except Exception:
+            pass
         logger.info("Cycle stopped for %s", link_id)
         raise
 
@@ -154,6 +196,7 @@ def _stop_cycle(link_id: str) -> None:
     _cycle_config.pop(link_id, None)
     _cycle_phase.pop(link_id, None)
     _cycle_start.pop(link_id, None)
+    database.delete_cycle(link_id)
 
 
 def _get_cycle_status(link_id: str) -> CycleStatus:
@@ -310,6 +353,7 @@ async def set_impairment(link_id: str, body: LinkImpairmentRequest):
         all_cmds += tc_manager.clear_qdisc(lc.iface_b, dry_run=config.dry_run)
         stats_collector.clear_history(lc.iface_a)
         stats_collector.clear_history(lc.iface_b)
+        database.delete_impairment(link_id)
         return CommandResult(success=True, message="Impairments cleared", commands=all_cmds)
 
     # A→B impairs iface_b egress; B→A impairs iface_a egress
@@ -321,6 +365,9 @@ async def set_impairment(link_id: str, body: LinkImpairmentRequest):
     )
     all_cmds += cmds_ab + cmds_ba
     all_errs += errs_ab + errs_ba
+
+    if ok_ab and ok_ba:
+        database.save_impairment(link_id, body.model_dump())
 
     return CommandResult(
         success=ok_ab and ok_ba,
@@ -346,6 +393,7 @@ async def reset_link(link_id: str):
     stats_collector.clear_history(lc.iface_a)
     stats_collector.clear_history(lc.iface_b)
     _link_settings[link_id] = LinkImpairmentRequest()
+    database.delete_impairment(link_id)
 
     return CommandResult(
         success=True,
@@ -370,6 +418,7 @@ async def set_cycle(link_id: str, body: CycleRequest):
         raise HTTPException(400, "Apply impairment settings before starting a cycle")
 
     _cycle_config[link_id] = (body.on_secs, body.off_secs)
+    database.save_cycle(link_id, body.on_secs, body.off_secs)
     task = asyncio.create_task(_cycle_loop(link_id))
     _cycle_tasks[link_id] = task
     return {"running": True, "message": "Cycle started", "on_secs": body.on_secs, "off_secs": body.off_secs}
