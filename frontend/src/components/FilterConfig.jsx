@@ -10,9 +10,9 @@ const PROTO_OPTIONS = [
 function Field({ label, hint, children }) {
   return (
     <div style={{ flex: '1 1 140px', minWidth: 120 }}>
-      <label style={{ display: 'block', marginBottom: 3 }}>{label}</label>
+      <label style={{ display: 'block', marginBottom: 4 }}>{label}</label>
       {children}
-      {hint && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>{hint}</div>}
     </div>
   )
 }
@@ -27,19 +27,22 @@ export default function FilterConfig({ value, onChange, dirLabel }) {
     f.protocol, f.dscp, f.vlan_id, f.mpls_label]
     .filter(v => v !== undefined && v !== null && v !== '').length
 
+  const isActive = f.enabled && activeCount > 0
+
   return (
     <div style={{
-      border: `1px solid ${f.enabled && activeCount > 0 ? '#4f8ef7' : 'var(--border)'}`,
-      borderRadius: 6,
+      border: `1px solid ${isActive ? 'rgba(10,132,255,0.35)' : 'var(--border)'}`,
+      borderRadius: 'var(--radius-sm)',
       marginTop: 10,
       overflow: 'hidden',
+      transition: 'border-color .2s',
     }}>
       {/* Toggle header */}
       <div
         onClick={() => setOpen(o => !o)}
         style={{
-          padding: '7px 12px',
-          background: '#0f1420',
+          padding: '8px 12px',
+          background: 'rgba(255,255,255,0.03)',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -47,37 +50,44 @@ export default function FilterConfig({ value, onChange, dirLabel }) {
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: .5 }}>
-          ⚙ Filter — {dirLabel}
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', letterSpacing: '0.04em' }}>
+          Filter — {dirLabel}
         </span>
-        {f.enabled && activeCount > 0 && (
-          <span className="badge badge-up" style={{ fontSize: 10 }}>
-            {activeCount} criteria
+        {isActive && (
+          <span className="badge" style={{ background: 'var(--accent-tint)', color: 'var(--accent)', fontSize: 10 }}>
+            {activeCount} {activeCount === 1 ? 'criterion' : 'criteria'}
           </span>
         )}
         {f.enabled && activeCount === 0 && (
-          <span className="badge badge-warn" style={{ fontSize: 10 }}>enabled, no criteria</span>
+          <span className="badge badge-warn" style={{ fontSize: 10 }}>no criteria</span>
         )}
         <div style={{ flex: 1 }} />
-        <span style={{ color: 'var(--muted)', fontSize: 13 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
       </div>
 
       {open && (
-        <div style={{ padding: '12px 14px', background: '#0a0e1a' }}>
+        <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }}>
+
           {/* Enable toggle */}
-          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
             <div
               onClick={() => set({ enabled: !f.enabled })}
               style={{
-                width: 36, height: 20, borderRadius: 10,
-                background: f.enabled ? 'var(--accent)' : 'var(--border)',
-                position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0,
+                width: 38, height: 22, borderRadius: 11,
+                background: f.enabled ? '#30d158' : 'rgba(118,118,128,0.32)',
+                position: 'relative', cursor: 'pointer',
+                transition: 'background .22s',
+                flexShrink: 0,
+                boxShadow: f.enabled ? '0 0 8px rgba(48,209,88,0.35)' : 'none',
               }}
             >
               <div style={{
-                position: 'absolute', top: 2, left: f.enabled ? 18 : 2,
-                width: 16, height: 16, borderRadius: '50%',
-                background: '#fff', transition: 'left .2s',
+                position: 'absolute',
+                top: 2, left: f.enabled ? 18 : 2,
+                width: 18, height: 18, borderRadius: '50%',
+                background: '#ffffff',
+                transition: 'left .22s cubic-bezier(.4,0,.2,1)',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
               }} />
             </div>
             <span style={{ fontSize: 12, color: f.enabled ? 'var(--accent)' : 'var(--muted)' }}>
@@ -86,7 +96,7 @@ export default function FilterConfig({ value, onChange, dirLabel }) {
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            <Field label="Src IP / CIDR" hint="e.g. 10.0.0.0/8 or 192.168.1.5">
+            <Field label="Src IP / CIDR" hint="e.g. 10.0.0.0/8">
               <input type="text" value={f.src_ip ?? ''} placeholder="0.0.0.0/0"
                 onChange={e => set({ src_ip: e.target.value || undefined })} />
             </Field>
@@ -116,7 +126,7 @@ export default function FilterConfig({ value, onChange, dirLabel }) {
                 onChange={e => set({ dst_port: e.target.value ? parseInt(e.target.value) : undefined })} />
             </Field>
 
-            <Field label="DSCP" hint="0–63 (e.g. 46 = EF/VoIP)">
+            <Field label="DSCP" hint="0–63 (46 = EF/VoIP)">
               <input type="number" min={0} max={63} value={f.dscp ?? ''}
                 placeholder="any"
                 onChange={e => set({ dscp: e.target.value !== '' ? parseInt(e.target.value) : undefined })} />
@@ -137,14 +147,14 @@ export default function FilterConfig({ value, onChange, dirLabel }) {
 
           <button
             className="btn btn-ghost"
-            style={{ marginTop: 10, fontSize: 11 }}
+            style={{ marginTop: 12, fontSize: 11 }}
             onClick={() => set({
               enabled: false, src_ip: undefined, dst_ip: undefined,
               src_port: undefined, dst_port: undefined, protocol: undefined,
               dscp: undefined, vlan_id: undefined, mpls_label: undefined,
             })}
           >
-            Clear filter
+            Clear Filter
           </button>
         </div>
       )}

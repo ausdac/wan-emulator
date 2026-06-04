@@ -43,22 +43,26 @@ export default function PresetSelector({ linkId, onApplied, onPreviewParams }) {
     } catch {}
   }
 
-  // Group presets by category for the dropdown
   const grouped = CATEGORY_ORDER.reduce((acc, cat) => {
     const items = presets.filter(p => p.category === cat)
     if (items.length) acc[cat] = items
     return acc
   }, {})
 
+  const description = presets.find(x => x.name === selected)?.description
+
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8,
-      padding: '10px 14px',
-      background: '#0d1020',
+      padding: '10px 16px',
+      background: 'rgba(255,255,255,0.02)',
       borderBottom: '1px solid var(--border)',
     }}>
-      <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600,
-        textTransform: 'uppercase', letterSpacing: .5, whiteSpace: 'nowrap' }}>
+      <span style={{
+        fontSize: 11, fontWeight: 600, color: 'var(--muted)',
+        textTransform: 'uppercase', letterSpacing: '0.06em',
+        whiteSpace: 'nowrap',
+      }}>
         Quick Preset
       </span>
 
@@ -76,28 +80,24 @@ export default function PresetSelector({ linkId, onApplied, onPreviewParams }) {
         ))}
       </select>
 
-      {selected && presets.length > 0 && (() => {
-        const p = presets.find(x => x.name === selected)
-        return p ? (
-          <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', flex: '1 1 160px' }}>
-            {p.description}
-          </span>
-        ) : null
-      })()}
+      {description && (
+        <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', flex: '1 1 160px' }}>
+          {description}
+        </span>
+      )}
 
       <button className="btn btn-ghost" onClick={handlePreview} disabled={!selected}
-        style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        style={{ fontSize: 12 }}>
         Preview
       </button>
-      <button className="btn btn-primary" onClick={handleApply} disabled={busy || !selected}
-        style={{ whiteSpace: 'nowrap' }}>
-        ▶ Apply Preset
+      <button className="btn btn-primary" onClick={handleApply} disabled={busy || !selected}>
+        Apply Preset
       </button>
 
       {msg && (
         <span style={{
-          fontSize: 12,
-          color: msg.ok ? '#22c55e' : '#ef4444',
+          fontSize: 12, fontWeight: 500,
+          color: msg.ok ? '#30d158' : '#ff453a',
           whiteSpace: 'nowrap',
         }}>
           {msg.ok ? '✓' : '✗'} {msg.text}

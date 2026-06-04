@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { api } from '../api.js'
 
 // ── Sparkline SVG ─────────────────────────────────────────────────────────────
-function Sparkline({ data, color, label, width = 200, height = 50 }) {
+function Sparkline({ data, color, label, width = 200, height = 48 }) {
   if (!data || data.length < 2) {
     return (
-      <div style={{ display: 'inline-block', width, textAlign: 'center',
-        fontSize: 11, color: 'var(--muted)', lineHeight: `${height}px` }}>
+      <div style={{
+        display: 'inline-block', width, textAlign: 'center',
+        fontSize: 11, color: 'var(--muted)', lineHeight: `${height}px`,
+      }}>
         {label}: collecting…
       </div>
     )
@@ -22,18 +24,22 @@ function Sparkline({ data, color, label, width = 200, height = 50 }) {
 
   return (
     <div style={{ display: 'inline-block' }}>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2 }}>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>
         {label}: <span style={{ color, fontWeight: 700 }}>{latest.toFixed(1)}/s</span>
       </div>
-      <svg width={width} height={height} style={{ display: 'block', background: '#0a0d18', borderRadius: 4 }}>
+      <svg width={width} height={height} style={{
+        display: 'block',
+        background: 'rgba(255,255,255,0.04)',
+        borderRadius: 8,
+      }}>
         <polyline
           points={pts.join(' ')}
           fill="none"
           stroke={color}
           strokeWidth="1.5"
           strokeLinejoin="round"
+          strokeLinecap="round"
         />
-        {/* Latest value dot */}
         {pts.length > 0 && (() => {
           const [lx, ly] = pts[pts.length - 1].split(',')
           return <circle cx={lx} cy={ly} r="2.5" fill={color} />
@@ -47,11 +53,21 @@ function Sparkline({ data, color, label, width = 200, height = 50 }) {
 function CounterCard({ label, value, unit = '', color }) {
   return (
     <div style={{
-      background: '#0a0d18', borderRadius: 6, padding: '8px 12px',
-      minWidth: 100, textAlign: 'center',
+      background: 'rgba(255,255,255,0.05)',
+      borderRadius: 10,
+      padding: '8px 14px',
+      minWidth: 92,
+      textAlign: 'center',
     }}>
-      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: color ?? 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3, letterSpacing: '0.03em' }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 19, fontWeight: 700,
+        color: color ?? 'var(--text)',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '-0.02em',
+      }}>
         {value}
       </div>
       {unit && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{unit}</div>}
@@ -74,20 +90,23 @@ function IfaceStats({ label, data }) {
 
   return (
     <div style={{ flex: 1, minWidth: 260 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)',
-        textTransform: 'uppercase', letterSpacing: .5, marginBottom: 8 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: 'var(--muted)',
+        textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
+      }}>
         {label}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
         <CounterCard label="Packets"  value={fmt(data.packets_sent)} />
         <CounterCard label="Bytes"    value={fmt(data.bytes_sent)} unit="bytes" />
-        <CounterCard label="Dropped"  value={fmt(data.dropped)} color={data.dropped > 0 ? '#ef4444' : undefined} />
-        <CounterCard label="Drop %"   value={data.drop_percent.toFixed(1)}
-          unit="%" color={data.drop_percent > 1 ? '#f59e0b' : data.drop_percent > 0 ? '#fde68a' : undefined} />
+        <CounterCard label="Dropped"  value={fmt(data.dropped)}
+          color={data.dropped > 0 ? '#ff453a' : undefined} />
+        <CounterCard label="Drop %"   value={data.drop_percent.toFixed(1)} unit="%"
+          color={data.drop_percent > 1 ? '#ff9f0a' : data.drop_percent > 0 ? 'rgba(255,159,10,0.7)' : undefined} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Sparkline data={pktHistory}  color="#22c55e" label="Pkts" />
-        <Sparkline data={dropHistory} color="#ef4444" label="Drops" />
+        <Sparkline data={pktHistory}  color="#30d158" label="Pkts" />
+        <Sparkline data={dropHistory} color="#ff453a" label="Drops" />
       </div>
     </div>
   )
@@ -95,8 +114,8 @@ function IfaceStats({ label, data }) {
 
 // ── Main StatsPanel ───────────────────────────────────────────────────────────
 export default function StatsPanel({ linkId, ifaceA, ifaceB }) {
-  const [data,   setData]   = useState(null)
-  const [error,  setError]  = useState(null)
+  const [data,  setData]  = useState(null)
+  const [error, setError] = useState(null)
   const timerRef = useRef(null)
 
   const poll = useCallback(async () => {
@@ -115,26 +134,49 @@ export default function StatsPanel({ linkId, ifaceA, ifaceB }) {
     return () => clearInterval(timerRef.current)
   }, [poll])
 
+  const handleClearStats = async () => {
+    try {
+      await api.clearStats(linkId)
+      setData(null)
+    } catch {}
+  }
+
   return (
     <div style={{
-      padding: '14px 16px',
-      background: '#0a0d18',
+      padding: '16px 18px',
+      background: 'rgba(255,255,255,0.03)',
       borderTop: '1px solid var(--border)',
     }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#4f8ef7',
-        textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-        Live Stats — polling every 2s
-        {error && <span style={{ color: '#ef4444', marginLeft: 10, fontWeight: 400 }}>{error}</span>}
+      <div style={{
+        display: 'flex', alignItems: 'center', marginBottom: 14,
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, color: '#0a84ff',
+          textTransform: 'uppercase', letterSpacing: '0.07em',
+        }}>
+          Live Stats
+          <span style={{ color: 'var(--muted)', fontWeight: 400, marginLeft: 6 }}>· every 2s</span>
+        </div>
+        {error && (
+          <span style={{ color: '#ff453a', marginLeft: 10, fontSize: 11 }}>{error}</span>
+        )}
+        <div style={{ flex: 1 }} />
+        <button
+          className="btn btn-ghost"
+          onClick={handleClearStats}
+          style={{ fontSize: 11, padding: '4px 12px' }}
+        >
+          Reset Counters
+        </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
         <IfaceStats label={`← ${ifaceA} (B→A egress)`} data={data?.iface_a} />
         <IfaceStats label={`→ ${ifaceB} (A→B egress)`} data={data?.iface_b} />
       </div>
 
-      <div style={{ marginTop: 8, fontSize: 10, color: '#334155' }}>
-        Sparklines show per-interval rates (packets/s and drops/s) over the last 2 minutes.
-        Counters are cumulative since last impairment apply.
+      <div style={{ marginTop: 10, fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+        Sparklines show per-interval rates over the last 2 minutes. Counters are cumulative since last reset.
       </div>
     </div>
   )

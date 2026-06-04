@@ -14,11 +14,13 @@ function OverviewPage({ health, links, error, onConfigure, onRefresh }) {
 
         {error && (
           <div style={{
-            background: '#450a0a', border: '1px solid #ef4444', borderRadius: 8,
-            padding: '12px 18px', marginBottom: 24, color: '#fca5a5',
+            background: 'var(--danger-tint)',
+            border: '1px solid rgba(255,69,58,0.25)',
+            borderRadius: 'var(--radius)',
+            padding: '12px 18px', marginBottom: 24, color: '#ff453a',
           }}>
             <strong>Cannot reach backend:</strong> {error}
-            <div style={{ fontSize: 12, marginTop: 4, color: '#9a3412' }}>
+            <div style={{ fontSize: 12, marginTop: 4, color: 'rgba(255,69,58,0.6)' }}>
               Make sure the WANEmulator service is running on port 8080.
             </div>
           </div>
@@ -44,10 +46,10 @@ function OverviewPage({ health, links, error, onConfigure, onRefresh }) {
           <ProfileManager links={links} onApplied={onRefresh} />
         )}
 
-        <div style={{ marginTop: 32, textAlign: 'center', fontSize: 12, color: '#334155' }}>
-          WANEmulator v1.1 · API docs at{' '}
-          <a href="/docs" style={{ color: '#4f8ef7' }}>/docs</a>
-          {' '}· Config: <code style={{ color: '#64748b' }}>config.yaml</code>
+        <div style={{ marginTop: 36, textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>
+          WANEmulator v2 · API docs at{' '}
+          <a href="/docs" style={{ color: '#0a84ff', textDecoration: 'none' }}>/docs</a>
+          {' '}· <code style={{ color: 'rgba(255,255,255,0.25)', fontFamily: 'ui-monospace, monospace' }}>config.yaml</code>
         </div>
       </main>
     </div>
@@ -67,7 +69,7 @@ function DetailPage({ health, link, onBack, onRefresh }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--muted)', fontSize: 13, padding: '0 0 16px 0',
+            color: 'var(--muted)', fontSize: 13, letterSpacing: '-0.01em', padding: '0 0 16px 0',
             transition: 'color .15s',
           }}
           onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
