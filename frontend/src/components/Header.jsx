@@ -32,7 +32,7 @@ export default function Header({ health, onRefresh }) {
             color: '#ffffff',
             letterSpacing: '-0.02em',
           }}>
-            WANEmulator
+            WAN-Emulator
           </div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: '-0.01em' }}>
             Linux tc/netem
